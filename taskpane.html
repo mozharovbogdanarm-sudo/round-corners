@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Скругление углов</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    :root {
+      --bg: #ffffff; --fg: #242424; --muted: #707070; --line: #d1d1d1;
+      --accent: #c43e1c; --accent-soft: #fbe9e4; --field: #f5f5f5;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #1f1f1f; --fg: #f0f0f0; --muted: #a0a0a0; --line: #444;
+              --accent: #ff7a59; --accent-soft: #3a2822; --field: #2b2b2b; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+           font: 14px/1.4 "Segoe UI", system-ui, sans-serif; }
+    h1 { font-size: 16px; margin: 0 0 4px; font-weight: 600; }
+    .hint { color: var(--muted); font-size: 12px; margin: 0 0 16px; }
+    .preview { height: 84px; border: 1px dashed var(--line); border-radius: 6px;
+               display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+    .preview div { width: 96px; height: 56px; background: var(--accent); }
+    .row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
+    .num { display: flex; align-items: center; gap: 4px; }
+    .num input { width: 64px; padding: 5px 6px; border: 1px solid var(--line); border-radius: 4px;
+                 background: var(--field); color: var(--fg); font: inherit; text-align: right; }
+    .num input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+    .unit { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+    .unit button { border: 0; background: transparent; color: var(--fg); padding: 5px 10px;
+                   cursor: pointer; font: inherit; }
+    .unit button.on { background: var(--accent); color: #fff; }
+    .presets { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+    .presets button { border: 1px solid var(--line); background: var(--field); color: var(--fg);
+                      border-radius: 4px; padding: 4px 10px; cursor: pointer; font: inherit; }
+    .presets button:hover { border-color: var(--accent); }
+    .label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    #status { min-height: 36px; font-size: 12px; color: var(--muted); padding: 8px 10px;
+              background: var(--accent-soft); border-radius: 4px; }
+    #status.err { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <h1>Скругление углов</h1>
+  <p class="hint">Выделите одну или несколько фигур на слайде и двигайте ползунок или введите число.</p>
+
+  <div class="preview"><div id="demo"></div></div>
+
+  <div class="label">Единицы</div>
+  <div class="row">
+    <div class="unit" role="group" aria-label="Единицы измерения">
+      <button id="unitPct" class="on" type="button">%</button>
+      <button id="unitPt" type="button">пт</button>
+    </div>
+  </div>
+
+  <div class="label" id="valueLabel">Скругление, % (100% — максимально)</div>
+  <div class="row">
+    <input id="slider" type="range" min="0" max="100" step="1" value="0" aria-label="Ползунок скругления">
+    <div class="num">
+      <input id="number" type="number" min="0" max="100" step="1" value="0" aria-label="Значение скругления">
+      <span id="numUnit">%</span>
+    </div>
+  </div>
+
+  <div class="label">Быстрый выбор</div>
+  <div class="presets">
+    <button type="button" data-pct="0">0</button>
+    <button type="button" data-pct="10">10%</button>
+    <button type="button" data-pct="25">25%</button>
+    <button type="button" data-pct="50">50%</button>
+    <button type="button" data-pct="100">100%</button>
+  </div>
+
+  <div id="status">Выделите фигуру.</div>
+
+  <script src="taskpane.js"></script>
+</body>
+</html>
