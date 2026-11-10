@@ -5,10 +5,9 @@
  * поэтому adj = pct / 200. В режиме «пт» пользователь вводит радиус в пунктах.
  */
 
-// Фигуры, у которых первый маркер регулирует скругление углов.
-// Название типа сравниваем без учёта регистра: PowerPoint может вернуть "RoundRectangle" или "roundRectangle".
-function isRoundType(t) { return /^round(1|2same|2diag)?rect/i.test(String(t || "")); }
-function isPlainRect(t) { return String(t || "").toLowerCase() === "rectangle"; }
+// PowerPoint в этой сборке не отдаёт geometricShapeType, поэтому скругляемые фигуры определяем по имени
+// ("Прямоугольник: скругленные углы 3", "Rectangle: Rounded Corners 3", "Rounded Rectangle 3" и т.п.).
+function isRoundShape(s) { return /скругл|round/i.test(String((s && s.name) || "")); }
 
 const el = (id) => document.getElementById(id);
 const slider = el("slider");
@@ -102,42 +101,21 @@ async function applyToSelection() {
   try {
     await PowerPoint.run(async (ctx) => {
       const shapes = ctx.presentation.getSelectedShapes();
-      shapes.load("items/type,items/width,items/height");
+      shapes.load("items/type,items/width,items/height,items/name");
       await ctx.sync();
 
-      const geo = shapes.items.filter((s) => s.type === "GeometricShape");
       if (shapes.items.length === 0) { setStatus("Выделите фигуру.", true); return; }
+      const geo = shapes.items.filter((s) => s.type === "GeometricShape");
       if (geo.length === 0) { setStatus("Среди выделенного нет автофигур (картинки, таблицы и т.п. не поддерживаются).", true); return; }
 
-      geo.forEach((s) => s.load("geometricShapeType"));
-      await ctx.sync();
-
-      // Обычные прямоугольники превращаем в прямоугольники со скругленными углами.
-      const plain = geo.filter((s) => isPlainRect(s.geometricShapeType));
-      let converted = 0;
-      if (plain.length && pct > 0) {
-        try {
-          plain.forEach((s) => { s.geometricShapeType = "RoundRectangle"; });
-          await ctx.sync();
-          converted = plain.length;
-        } catch (e) { /* нельзя сменить тип — такие фигуры пропустим ниже */ }
-      }
-
-      // После смены типа перечитаем тип у бывших прямоугольников.
-      if (converted > 0) {
-        plain.forEach((s) => s.load("geometricShapeType"));
-        await ctx.sync();
-      }
-      const finalTargets = geo.filter((s) => isRoundType(s.geometricShapeType));
-
-      if (finalTargets.length === 0) {
-        const names = geo.map((s) => s.geometricShapeType).join(", ");
-        setStatus("У этой фигуры нет скругляемых углов (тип: " + names + "). Замените её на «Прямоугольник: скругленные углы».", true);
+      const targets = geo.filter(isRoundShape);
+      if (targets.length === 0) {
+        setStatus("У фигуры «" + geo[0].name + "» нет скругляемых углов. Замените её: Формат фигуры → Изменить фигуру → «Прямоугольник: скругленные углы».", true);
         return;
       }
 
       const expected = [];
-      finalTargets.forEach((s) => {
+      targets.forEach((s) => {
         const minSide = Math.max(0.01, Math.min(s.width, s.height));
         let adj;
         if (unit === "pt") {
@@ -150,19 +128,18 @@ async function applyToSelection() {
       });
       await ctx.sync();
 
-      const skipped = shapes.items.length - finalTargets.length;
-      let report = "Применено к фигурам: " + finalTargets.length + (skipped > 0 ? " (пропущено: " + skipped + ")" : "") + ".";
+      const skipped = shapes.items.length - targets.length;
+      let report = "Применено к фигурам: " + targets.length + (skipped > 0 ? " (пропущено: " + skipped + ")" : "") + ".";
 
-      // Диагностика: перечитываем значение после записи и показываем его.
+      // Диагностика: перечитываем значение после записи.
       try {
-        const back = finalTargets.map((s) => s.adjustments.get(0));
+        const back = targets.map((s) => s.adjustments.get(0));
         await ctx.sync();
         const got = back.map((r) => {
           const v = r && typeof r === "object" && "value" in r ? r.value : r;
           return typeof v === "number" ? v.toFixed(3) : String(v);
         });
-        report += " Тип: " + finalTargets.map((s) => s.geometricShapeType).join(", ") +
-          ". Записано: " + expected.map((v) => v.toFixed(3)).join(", ") +
+        report += " Записано: " + expected.map((v) => v.toFixed(3)).join(", ") +
           ", прочитано: " + got.join(", ") + ".";
       } catch (e) {
         report += " (не удалось перечитать значение: " + (e && e.message ? e.message : e) + ")";
@@ -181,19 +158,17 @@ async function readSelection() {
   try {
     await PowerPoint.run(async (ctx) => {
       const shapes = ctx.presentation.getSelectedShapes();
-      shapes.load("items/type,items/width,items/height");
+      shapes.load("items/type,items/width,items/height,items/name");
       await ctx.sync();
       if (shapes.items.length === 0) { setStatus("Выделите фигуру."); return; }
 
       const geo = shapes.items.filter((s) => s.type === "GeometricShape");
       if (geo.length === 0) { setStatus("Среди выделенного нет автофигур.", true); return; }
-      geo.forEach((s) => s.load("geometricShapeType"));
-      await ctx.sync();
 
       const first = geo[0];
       minSidePt = Math.max(1, Math.min(first.width, first.height));
 
-      if (isRoundType(first.geometricShapeType)) {
+      if (isRoundShape(first)) {
         const res = first.adjustments.get(0);
         await ctx.sync();
         const v = res && typeof res === "object" && "value" in res ? res.value : res;
@@ -203,7 +178,7 @@ async function readSelection() {
         setStatus("Выделено фигур: " + shapes.items.length + ".");
       } else {
         pct = 0;
-        setStatus("У выбранной фигуры углы не скруглены — двигайте ползунок, чтобы скруглить.");
+        setStatus("Фигура «" + first.name + "» не имеет скругляемых углов. Замените её на «Прямоугольник: скругленные углы».", true);
       }
       refreshControls();
     });
