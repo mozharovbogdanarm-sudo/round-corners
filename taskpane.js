@@ -6,7 +6,9 @@
  */
 
 // Фигуры, у которых первый маркер регулирует скругление углов.
-const ROUND_TYPES = ["RoundRectangle", "Round1Rectangle", "Round2SameRectangle", "Round2DiagRectangle"];
+// Название типа сравниваем без учёта регистра: PowerPoint может вернуть "RoundRectangle" или "roundRectangle".
+function isRoundType(t) { return /^round(1|2same|2diag)?rect/i.test(String(t || "")); }
+function isPlainRect(t) { return String(t || "").toLowerCase() === "rectangle"; }
 
 const el = (id) => document.getElementById(id);
 const slider = el("slider");
@@ -111,7 +113,7 @@ async function applyToSelection() {
       await ctx.sync();
 
       // Обычные прямоугольники превращаем в прямоугольники со скругленными углами.
-      const plain = geo.filter((s) => s.geometricShapeType === "Rectangle");
+      const plain = geo.filter((s) => isPlainRect(s.geometricShapeType));
       let converted = 0;
       if (plain.length && pct > 0) {
         try {
@@ -126,13 +128,15 @@ async function applyToSelection() {
         plain.forEach((s) => s.load("geometricShapeType"));
         await ctx.sync();
       }
-      const finalTargets = geo.filter((s) => ROUND_TYPES.includes(s.geometricShapeType));
+      const finalTargets = geo.filter((s) => isRoundType(s.geometricShapeType));
 
       if (finalTargets.length === 0) {
-        setStatus("У этой фигуры нет скругляемых углов. Замените её на «Прямоугольник: скругленные углы».", true);
+        const names = geo.map((s) => s.geometricShapeType).join(", ");
+        setStatus("У этой фигуры нет скругляемых углов (тип: " + names + "). Замените её на «Прямоугольник: скругленные углы».", true);
         return;
       }
 
+      const expected = [];
       finalTargets.forEach((s) => {
         const minSide = Math.max(0.01, Math.min(s.width, s.height));
         let adj;
@@ -141,12 +145,29 @@ async function applyToSelection() {
         } else {
           adj = pct / 200;
         }
+        expected.push(adj);
         s.adjustments.set(0, adj);
       });
       await ctx.sync();
 
       const skipped = shapes.items.length - finalTargets.length;
-      setStatus("Применено к фигурам: " + finalTargets.length + (skipped > 0 ? " (пропущено: " + skipped + ")" : "") + ".");
+      let report = "Применено к фигурам: " + finalTargets.length + (skipped > 0 ? " (пропущено: " + skipped + ")" : "") + ".";
+
+      // Диагностика: перечитываем значение после записи и показываем его.
+      try {
+        const back = finalTargets.map((s) => s.adjustments.get(0));
+        await ctx.sync();
+        const got = back.map((r) => {
+          const v = r && typeof r === "object" && "value" in r ? r.value : r;
+          return typeof v === "number" ? v.toFixed(3) : String(v);
+        });
+        report += " Тип: " + finalTargets.map((s) => s.geometricShapeType).join(", ") +
+          ". Записано: " + expected.map((v) => v.toFixed(3)).join(", ") +
+          ", прочитано: " + got.join(", ") + ".";
+      } catch (e) {
+        report += " (не удалось перечитать значение: " + (e && e.message ? e.message : e) + ")";
+      }
+      setStatus(report);
     });
   } catch (e) {
     setStatus("Не удалось изменить скругление: " + (e && e.message ? e.message : e) +
@@ -172,7 +193,7 @@ async function readSelection() {
       const first = geo[0];
       minSidePt = Math.max(1, Math.min(first.width, first.height));
 
-      if (ROUND_TYPES.includes(first.geometricShapeType)) {
+      if (isRoundType(first.geometricShapeType)) {
         const res = first.adjustments.get(0);
         await ctx.sync();
         const v = res && typeof res === "object" && "value" in res ? res.value : res;
